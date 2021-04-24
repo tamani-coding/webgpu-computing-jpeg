@@ -83,6 +83,21 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                     return;
                 }
 
+                // WIDTH/HEIGHT BUFFER
+                const gpuWidthHeightBuffer = device.createBuffer({
+                    mappedAtCreation: true,
+                    size: 8,
+                    usage: GPUBufferUsage.STORAGE
+                });
+                const arrayWidthHeightBuffer = gpuWidthHeightBuffer.getMappedRange(); 
+                const w = toBytesInt32(width);
+                const h = toBytesInt32(height);
+                const b = new Uint8Array(w.byteLength + h.byteLength);
+                b.set(w);
+                b.set(h, w.byteLength);
+                new Uint8Array(arrayWidthHeightBuffer).set(b);
+                gpuWidthHeightBuffer.unmap();
+
                 // INPUT BUFFER
                 // Get a GPU buffer in a mapped state and an arrayBuffer for writing.
                 const gpuInputBuffer = device.createBuffer({
@@ -117,6 +132,13 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                             binding: 1,
                             visibility: GPUShaderStage.COMPUTE,
                             buffer: {
+                                type: "read-only-storage"
+                            }
+                        } as GPUBindGroupLayoutEntry,
+                        {
+                            binding: 2,
+                            visibility: GPUShaderStage.COMPUTE,
+                            buffer: {
                                 type: "storage"
                             }
                         } as GPUBindGroupLayoutEntry
@@ -129,11 +151,17 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                         {
                             binding: 0,
                             resource: {
-                                buffer: gpuInputBuffer
+                                buffer: gpuWidthHeightBuffer
                             }
                         },
                         {
                             binding: 1,
+                            resource: {
+                                buffer: gpuInputBuffer
+                            }
+                        },
+                        {
+                            binding: 2,
                             resource: {
                                 buffer: gpuResultBuffer
                             }
@@ -185,6 +213,7 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                 // Read buffer.
                 gpuReadBuffer.mapAsync(GPUMapMode.READ).then(() => {
                     const copyArrayBuffer = gpuReadBuffer.getMappedRange();
+                    console.log('RESULT ' + new Uint8Array(copyArrayBuffer))
                     resolve(new Uint8Array(copyArrayBuffer))
                 });
 
@@ -194,15 +223,30 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
 }
 
 const shader = `
+[[block]] struct WidthHeight {
+    wh: vec2<u32>;
+};
+
 [[block]] struct Image {
   rgba: array<u32>;
 };
 
-[[group(0), binding(0)]] var<storage> inputPixels : [[access(read)]] Image;
-[[group(0), binding(1)]] var<storage> outputPixels : [[access(write)]] Image;
+[[group(0), binding(0)]] var<storage> widthHeight : [[access(read)]] WidthHeight;
+[[group(0), binding(1)]] var<storage> inputPixels : [[access(read)]] Image;
+[[group(0), binding(2)]] var<storage> outputPixels : [[access(write)]] Image;
 
 [[stage(compute)]]
-fn main([[builtin(global_invocation_id)]] global_id : vec3<u32>) {
-    outputPixels.rgba[global_id.x] = inputPixels.rgba[global_id.x];
+fn main([[builtin(global_invocation_id)]] xyz : vec3<u32>) {
+    outputPixels.rgba[xyz.x] = inputPixels.rgba[xyz.x];
 }
 `
+
+function toBytesInt32 (num: number): Uint8Array {
+    var arr = new Uint8Array([
+         (num & 0xff000000) >> 24,
+         (num & 0x00ff0000) >> 16,
+         (num & 0x0000ff00) >> 8,
+         (num & 0x000000ff)
+    ]);
+    return arr;
+}
