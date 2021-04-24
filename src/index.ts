@@ -25,7 +25,6 @@ function imageSelected(event: Event) {
     if (!files || files.length < 1) {
         return;
     }
-    console.log(files[0].type);
     if (files[0].type != 'image/jpeg') {
         console.log('selected file is not an image!')
         return;
@@ -43,6 +42,8 @@ function imageSelected(event: Event) {
         const d = decode(arrayReader.result as ArrayBuffer);
     
         processImage(d.data, d.width, d.height).then(result => {
+            console.log('RESULT ' + result)
+
             const resultImage: RawImageData<BufferLike> = {
                 width: d.width,
                 height: d.height,
@@ -84,24 +85,23 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                     return;
                 }
 
-                const [pad, inputArray] = padArray(array);
                 // INPUT BUFFER
                 // Get a GPU buffer in a mapped state and an arrayBuffer for writing.
                 const gpuInputBuffer = device.createBuffer({
                     mappedAtCreation: true,
-                    size: inputArray.length,
+                    size: array.length,
                     usage: GPUBufferUsage.STORAGE
                 });
                 const arrayBuffer = gpuInputBuffer.getMappedRange();
                 // Write bytes to buffer.
-                new Uint8Array(arrayBuffer).set(inputArray);
+                new Uint8Array(arrayBuffer).set(array);
                 // Unmap buffer so that it can be used later for copy.
                 gpuInputBuffer.unmap();
 
                 // OUTPUT BUFFER
                 // Get a GPU buffer for reading in an unmapped state.
                 const gpuResultBuffer = device.createBuffer({
-                    size: inputArray.length,
+                    size: array.length,
                     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
                 });
 
@@ -167,7 +167,7 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
 
                 // Get a GPU buffer for reading in an unmapped state.
                 const gpuReadBuffer = device.createBuffer({
-                    size: inputArray.length,
+                    size: array.length,
                     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
                 });
 
@@ -177,7 +177,7 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                     0 /* source offset */,
                     gpuReadBuffer /* destination buffer */,
                     0 /* destination offset */,
-                    inputArray.length /* size */
+                    array.length /* size */
                 );
 
                 const copyCommands = commandEncoder.finish();
@@ -187,11 +187,7 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                 // Read buffer.
                 gpuReadBuffer.mapAsync(GPUMapMode.READ).then(() => {
                     const copyArrayBuffer = gpuReadBuffer.getMappedRange();
-                    if (pad != 4) {
-                        resolve(new Uint8Array(copyArrayBuffer.slice(0, copyArrayBuffer.byteLength - pad)))
-                    } else {
-                        resolve(new Uint8Array(copyArrayBuffer))
-                    }
+                    resolve(new Uint8Array(copyArrayBuffer))
                 });
 
             })
@@ -199,26 +195,13 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
     );
 }
 
-function padArray(array: ArrayBuffer): [number, number[]] {
-    const inputArray = Array.from(new Uint8Array(array))
-
-    const pad = 4 - (inputArray.length % 4);
-    if (pad != 4) { // must be multiple of 4
-        for (let i = 0; i < pad; i++) {
-            inputArray.push(0)
-        }
-    }
-
-    return [pad, inputArray];
-}
-
 const shader = `
-[[block]] struct Matrix {
+[[block]] struct Image {
   rgba: array<u32>;
 };
 
-[[group(0), binding(0)]] var<storage> inputPixels : [[access(read)]] Matrix;
-[[group(0), binding(1)]] var<storage> outputPixels : [[access(write)]] Matrix;
+[[group(0), binding(0)]] var<storage> inputPixels : [[access(read)]] Image;
+[[group(0), binding(1)]] var<storage> outputPixels : [[access(write)]] Image;
 
 [[builtin(local_invocation_id)]]
 var<in> local_id : vec3<u32>;
@@ -229,6 +212,7 @@ var<in> global_id : vec3<u32>;
 
 [[stage(compute)]]
 fn main() {
-    outputPixels.rgba[global_id.x + global_id.y] = inputPixels.rgba[global_id.x + global_id.y];
+    var resultCell : vec2<u32> = vec2<u32>(global_id.x, global_id.y);
+    outputPixels.rgba[resultCell.x * resultCell.y] = inputPixels.rgba[resultCell.x * resultCell.y];
 }
 `
