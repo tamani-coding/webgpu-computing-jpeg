@@ -2,6 +2,10 @@ import { decode, encode, RawImageData, BufferLike } from 'jpeg-js'
 import * as buffer from 'buffer';
 (window as any).Buffer = buffer.Buffer;
 
+console.log((0xffffffff))
+console.log( ( (0) << 24 ) + ( (0) << 16 ) + ( (4) << 8 ) + (150));
+console.log( ( (0) << 24 ) + ( (0) << 16 ) + ( (3) << 8 ) + (112));
+
 // FILE INPUT
 const input = document.createElement('input')
 input.type = 'file'
@@ -213,7 +217,7 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                 // Read buffer.
                 gpuReadBuffer.mapAsync(GPUMapMode.READ).then(() => {
                     const copyArrayBuffer = gpuReadBuffer.getMappedRange();
-                    console.log('RESULT ' + new Uint8Array(copyArrayBuffer))
+                    // console.log('RESULT ' + new Uint8Array(copyArrayBuffer))
                     resolve(new Uint8Array(copyArrayBuffer))
                 });
 
@@ -237,7 +241,14 @@ const shader = `
 
 [[stage(compute)]]
 fn main([[builtin(global_invocation_id)]] xyz : vec3<u32>) {
-    outputPixels.rgba[xyz.x] = inputPixels.rgba[xyz.x];
+    // if (xyz.x == 0u) {
+    //     outputPixels.rgba[xyz.x] = widthHeight.wh.x;
+    // } 
+    // if (xyz.x == 1u) {
+    //     outputPixels.rgba[xyz.x] = widthHeight.wh.y;
+    // } 
+    outputPixels.rgba[xyz.x] = u32(4294967295u) - u32(inputPixels.rgba[xyz.x]);
+    // outputPixels.rgba[xyz.x] = u32(xyz.x) >> 24;
 }
 `
 
