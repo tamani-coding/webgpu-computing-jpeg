@@ -1,6 +1,7 @@
 import { decode, encode, RawImageData, BufferLike } from 'jpeg-js'
 import * as buffer from 'buffer';
 (window as any).Buffer = buffer.Buffer;
+import { shader_invert } from './shaders'
 
 // FILE INPUT
 const input = document.createElement('input')
@@ -14,6 +15,8 @@ document.body.appendChild(document.createElement('br'))
 // INPUT IMAGE
 const inputImage = document.createElement('img')
 document.body.appendChild(inputImage)
+
+document.body.appendChild(document.createElement('br'))
 
 // OUTPUT IMAGE
 const outputImage = document.createElement('img')
@@ -41,7 +44,7 @@ function imageSelected(event: Event) {
     arrayReader.addEventListener("load", function () {
         const d = decode(arrayReader.result as ArrayBuffer);
     
-        processImage(d.data, d.width, d.height).then(result => {
+        processImage(new Uint32Array(d.data), d.width, d.height).then( result => {
             const resultImage: RawImageData<BufferLike> = {
                 width: d.width,
                 height: d.height,
@@ -74,7 +77,7 @@ async function device() {
     return await adapter.requestDevice();
 }
 
-function processImage(array: Uint8Array, width: number, height: number): Promise<Uint8Array> {
+function processImage(array: Uint32Array, width: number, height: number): Promise<Uint8Array> {
     return new Promise(
         resolve => {
             device().then((device: GPUDevice | null | undefined) => {
@@ -167,7 +170,7 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                 });
 
                 const shaderModule = device.createShaderModule({
-                    code: shader_copy
+                    code: shader_invert
                 });
 
                 const computePipeline = device.createComputePipeline({
@@ -218,66 +221,3 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
         }
     );
 }
-
-const shader = `
-[[block]] struct Size {
-    size: vec2<f32>;
-};
-
-[[block]] struct Image {
-  rgba: array<u32>;
-};
-
-[[group(0), binding(0)]] var<storage> widthHeight : [[access(read)]] Size;
-[[group(0), binding(1)]] var<storage> inputPixels : [[access(read)]] Image;
-[[group(0), binding(2)]] var<storage> outputPixels : [[access(write)]] Image;
-
-[[stage(compute)]]
-fn main([[builtin(global_invocation_id)]] global_id : vec3<u32>) {
-    let resultCell : vec2<u32> = vec2<u32>(global_id.x, global_id.y);
-    let index : u32 = resultCell.y + resultCell.x * u32(widthHeight.size.y);
-    if (global_id.x > 0u && global_id.y > 0u && global_id.x < u32(widthHeight.size.x) && global_id.y < u32(widthHeight.size.y)) {
-    
-        let w00_i : u32 = resultCell.y - 1u + (resultCell.x - 1u) * u32(widthHeight.size.y);
-        let w10_i : u32 = resultCell.y - 1u + resultCell.x * u32(widthHeight.size.y);
-        let w20_i : u32 = resultCell.y - 1u + (resultCell.x + 1u) * u32(widthHeight.size.y);
-    
-        let w01_i : u32 = resultCell.y + (resultCell.x - 1u) * u32(widthHeight.size.y);
-        let w11_i : u32 = resultCell.y + resultCell.x * u32(widthHeight.size.y);
-        let w21_i : u32 = resultCell.y + (resultCell.x + 1u) * u32(widthHeight.size.y);
-    
-        let w02_i : u32 = resultCell.y + 1u + (resultCell.x - 1u) * u32(widthHeight.size.y);
-        let w12_i : u32 = resultCell.y + 1u + resultCell.x * u32(widthHeight.size.y);
-        let w22_i : u32 = resultCell.y + 1u + (resultCell.x + 1u) * u32(widthHeight.size.y);
-    
-        let tmp : f32 = ( f32(1u * inputPixels.rgba[w00_i])   + f32(1u * inputPixels.rgba[w10_i]) + f32(1u * inputPixels.rgba[w20_i])
-                        + f32(1u * inputPixels.rgba[w01_i])   + f32(1u * inputPixels.rgba[w11_i]) + f32(1u * inputPixels.rgba[w21_i])
-                        + f32(1u * inputPixels.rgba[w02_i])   + f32(1u * inputPixels.rgba[w12_i]) + f32(1u * inputPixels.rgba[w22_i]) ) / f32(9);
-
-        outputPixels.rgba[index] =  u32(tmp);
-    } else {
-        outputPixels.rgba[index] = inputPixels.rgba[index];
-    }
-}
-`
-
-const shader_copy = `
-[[block]] struct Size {
-    size: vec2<f32>;
-};
-
-[[block]] struct Image {
-  rgba: array<u32>;
-};
-
-[[group(0), binding(0)]] var<storage> widthHeight : [[access(read)]] Size;
-[[group(0), binding(1)]] var<storage> inputPixels : [[access(read)]] Image;
-[[group(0), binding(2)]] var<storage> outputPixels : [[access(write)]] Image;
-
-[[stage(compute)]]
-fn main([[builtin(global_invocation_id)]] global_id : vec3<u32>) {
-    let resultCell : vec2<u32> = vec2<u32>(global_id.x, global_id.y);
-    let index : u32 = resultCell.y + resultCell.x * u32(widthHeight.size.y);
-    outputPixels.rgba[index] = inputPixels.rgba[index];
-}
-`
