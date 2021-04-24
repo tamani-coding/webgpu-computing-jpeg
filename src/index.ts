@@ -40,21 +40,27 @@ function imageSelected(event: Event) {
 
     const arrayReader = new FileReader();
     arrayReader.addEventListener("load", function () {
-
-        arrayReader.result as ArrayBuffer
-
         const d = decode(arrayReader.result as ArrayBuffer);
-        console.log(d.data);
     
         processImage(d.data, d.width, d.height).then(result => {
-    
             const resultImage: RawImageData<BufferLike> = {
                 width: d.width,
                 height: d.height,
                 data: result
             }
-    
-            encode(resultImage)
+            const encoded = encode(resultImage, 100)
+
+            let binary = '';
+            var bytes = new Uint8Array( encoded.data );
+            var len = bytes.byteLength;
+            for (var i = 0; i < len; i++) {
+                binary += String.fromCharCode( bytes[ i ] );
+            }
+
+            let processed = 'data:' + files[0].type + ';base64,'
+            processed += window.btoa(binary);
+
+            outputImage.src = processed
         })
     }, false);
     arrayReader.readAsArrayBuffer(files[0])
@@ -181,9 +187,6 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                 // Read buffer.
                 gpuReadBuffer.mapAsync(GPUMapMode.READ).then(() => {
                     const copyArrayBuffer = gpuReadBuffer.getMappedRange();
-                    console.log(new Uint8Array(copyArrayBuffer))
-
-
                     if (pad != 4) {
                         resolve(new Uint8Array(copyArrayBuffer.slice(0, copyArrayBuffer.byteLength - pad)))
                     } else {
@@ -198,16 +201,13 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
 
 function padArray(array: ArrayBuffer): [number, number[]] {
     const inputArray = Array.from(new Uint8Array(array))
-    console.log('org. length ' + inputArray.length)
 
     const pad = 4 - (inputArray.length % 4);
     if (pad != 4) { // must be multiple of 4
-        console.log('modulo ' + pad)
         for (let i = 0; i < pad; i++) {
             inputArray.push(0)
         }
     }
-    console.log('new length ' + inputArray.length)
 
     return [pad, inputArray];
 }
