@@ -145,7 +145,7 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                     layout: device.createPipelineLayout({
                         bindGroupLayouts: [bindGroupLayout]
                     }),
-                    computeStage: {
+                    compute: {
                         module: shaderModule,
                         entryPoint: "main"
                     }
