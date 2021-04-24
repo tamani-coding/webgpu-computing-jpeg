@@ -246,13 +246,3 @@ fn main([[builtin(global_invocation_id)]] global_id : vec3<u32>) {
     // outputPixels.rgba[global_id.x] = u32(global_id.x) >> 24;
 }
 `
-
-function toBytesInt32 (num: number): Uint8Array {
-    var arr = new Uint8Array([
-         (num & 0xff000000) >> 24,
-         (num & 0x00ff0000) >> 16,
-         (num & 0x0000ff00) >> 8,
-         (num & 0x000000ff)
-    ]);
-    return arr;
-}
