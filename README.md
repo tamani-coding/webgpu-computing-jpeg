@@ -10,3 +10,9 @@ Install chrome canary and call `chrome://flags/#enable-unsafe-webgpu`. Enable we
 `npm run start`
 
 Open in Chrome canary with enabled webgpu!
+
+## Learning Source
+
+https://developers.google.com/web/updates/2019/08/get-started-with-gpu-compute-on-the-web
+
+https://en.wikipedia.org/wiki/Kernel_(image_processing)
