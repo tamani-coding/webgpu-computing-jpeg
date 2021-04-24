@@ -42,8 +42,6 @@ function imageSelected(event: Event) {
         const d = decode(arrayReader.result as ArrayBuffer);
     
         processImage(d.data, d.width, d.height).then(result => {
-            console.log('RESULT ' + result)
-
             const resultImage: RawImageData<BufferLike> = {
                 width: d.width,
                 height: d.height,
@@ -162,7 +160,7 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                 const passEncoder = commandEncoder.beginComputePass();
                 passEncoder.setPipeline(computePipeline);
                 passEncoder.setBindGroup(0, bindGroup);
-                passEncoder.dispatch(width, height);
+                passEncoder.dispatch(width * height);
                 passEncoder.endPass();
 
                 // Get a GPU buffer for reading in an unmapped state.
@@ -203,16 +201,8 @@ const shader = `
 [[group(0), binding(0)]] var<storage> inputPixels : [[access(read)]] Image;
 [[group(0), binding(1)]] var<storage> outputPixels : [[access(write)]] Image;
 
-[[builtin(local_invocation_id)]]
-var<in> local_id : vec3<u32>;
-[[builtin(local_invocation_index)]] 
-var<in> local_index : u32;
-[[builtin(global_invocation_id)]] 
-var<in> global_id : vec3<u32>;
-
 [[stage(compute)]]
-fn main() {
-    var resultCell : vec2<u32> = vec2<u32>(global_id.x, global_id.y);
-    outputPixels.rgba[resultCell.x * resultCell.y] = inputPixels.rgba[resultCell.x * resultCell.y];
+fn main([[builtin(global_invocation_id)]] global_id : vec3<u32>) {
+    outputPixels.rgba[global_id.x] = inputPixels.rgba[global_id.x];
 }
 `
