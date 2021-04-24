@@ -2,10 +2,6 @@ import { decode, encode, RawImageData, BufferLike } from 'jpeg-js'
 import * as buffer from 'buffer';
 (window as any).Buffer = buffer.Buffer;
 
-console.log((0xffffffff))
-console.log( ( (0) << 24 ) + ( (0) << 16 ) + ( (4) << 8 ) + (150));
-console.log( ( (0) << 24 ) + ( (0) << 16 ) + ( (3) << 8 ) + (112));
-
 // FILE INPUT
 const input = document.createElement('input')
 input.type = 'file'
@@ -88,18 +84,15 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                 }
 
                 // WIDTH/HEIGHT BUFFER
+
+                const sizeArray = new Float32Array([ width, height ]);
                 const gpuWidthHeightBuffer = device.createBuffer({
                     mappedAtCreation: true,
-                    size: 8,
+                    size: sizeArray.byteLength,
                     usage: GPUBufferUsage.STORAGE
                 });
                 const arrayWidthHeightBuffer = gpuWidthHeightBuffer.getMappedRange(); 
-                const w = toBytesInt32(width);
-                const h = toBytesInt32(height);
-                const b = new Uint8Array(w.byteLength + h.byteLength);
-                b.set(w);
-                b.set(h, w.byteLength);
-                new Uint8Array(arrayWidthHeightBuffer).set(b);
+                new Float32Array(arrayWidthHeightBuffer).set(sizeArray);
                 gpuWidthHeightBuffer.unmap();
 
                 // INPUT BUFFER
@@ -192,7 +185,7 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
                 const passEncoder = commandEncoder.beginComputePass();
                 passEncoder.setPipeline(computePipeline);
                 passEncoder.setBindGroup(0, bindGroup);
-                passEncoder.dispatch(width * height);
+                passEncoder.dispatch(width, height);
                 passEncoder.endPass();
 
                 // Get a GPU buffer for reading in an unmapped state.
@@ -227,28 +220,30 @@ function processImage(array: Uint8Array, width: number, height: number): Promise
 }
 
 const shader = `
-[[block]] struct WidthHeight {
-    wh: vec2<u32>;
+[[block]] struct Size {
+    size: vec2<f32>;
 };
 
 [[block]] struct Image {
   rgba: array<u32>;
 };
 
-[[group(0), binding(0)]] var<storage> widthHeight : [[access(read)]] WidthHeight;
+[[group(0), binding(0)]] var<storage> widthHeight : [[access(read)]] Size;
 [[group(0), binding(1)]] var<storage> inputPixels : [[access(read)]] Image;
 [[group(0), binding(2)]] var<storage> outputPixels : [[access(write)]] Image;
 
 [[stage(compute)]]
-fn main([[builtin(global_invocation_id)]] xyz : vec3<u32>) {
-    // if (xyz.x == 0u) {
-    //     outputPixels.rgba[xyz.x] = widthHeight.wh.x;
+fn main([[builtin(global_invocation_id)]] global_id : vec3<u32>) {
+    // if (global_id.x == 0u) {
+    //     outputPixels.rgba[global_id.x] = widthHeight.size.x;
     // } 
-    // if (xyz.x == 1u) {
-    //     outputPixels.rgba[xyz.x] = widthHeight.wh.y;
+    // if (global_id.x == 1u) {
+    //     outputPixels.rgba[global_id.x] = widthHeight.size.y;
     // } 
-    outputPixels.rgba[xyz.x] = u32(4294967295u) - u32(inputPixels.rgba[xyz.x]);
-    // outputPixels.rgba[xyz.x] = u32(xyz.x) >> 24;
+    let resultCell : vec2<u32> = vec2<u32>(global_id.x, global_id.y);
+    let index : u32 = resultCell.y + resultCell.x * u32(widthHeight.size.y);
+    outputPixels.rgba[index] = inputPixels.rgba[index];
+    // outputPixels.rgba[global_id.x] = u32(global_id.x) >> 24;
 }
 `
 
