@@ -1,0 +1,11 @@
+{
+    "compilerOptions": {
+      "outDir": "./dist/",
+      "sourceMap": true,
+      "noImplicitAny": true,
+      "module": "CommonJS",
+      "target": "es5",
+      "allowJs": true,
+      "typeRoots":  [ "./node_modules/@webgpu/types", "./node_modules/@types"]
+    }
+}
