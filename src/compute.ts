@@ -9,7 +9,7 @@ async function gpu() {
     return await adapter.requestDevice();
 }
 
-export async function processImage(array: Uint32Array, width: number, height: number): Promise<Uint8Array> {
+export async function processImage(array: Uint8Array, width: number, height: number): Promise<Uint8Array> {
     const device = await gpu();
 
     if (!device) {
@@ -39,13 +39,13 @@ export async function processImage(array: Uint32Array, width: number, height: nu
             new Uint8Array(arrayBuffer).set(array);
             gpuInputBuffer.unmap();
 
-            // OUTPUT BUFFER
+            // RESULT BUFFER
             const gpuResultBuffer = device.createBuffer({
                 size: array.length,
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
             });
 
-            // Get a GPU buffer for reading in an unmapped state.
+            // BUFFER TO READ RESULT
             const gpuReadBuffer = device.createBuffer({
                 size: array.length,
                 usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
@@ -144,4 +144,17 @@ export async function processImage(array: Uint32Array, width: number, height: nu
             });
         }
     );
+}
+
+export function processImageCpu (array: Uint8Array, width: number, height: number): Promise<Uint8Array> {
+    console.log('process image cpu');
+
+    const result = new Uint8Array(array.length);
+    return new Promise(resolve => {
+        for (let i = 0; i < array.byteLength; i++) {
+            const tmp = array[i]
+            result[i] = 0xFF - tmp;
+        }
+        resolve(result);
+    })
 }
