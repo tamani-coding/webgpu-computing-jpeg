@@ -19,7 +19,6 @@ export async function processImage(array: Uint8Array, width: number, height: num
     return new Promise(
         (resolve, reject) => {
             // WIDTH/HEIGHT BUFFER
-            Int32Array
             const sizeArray = new Int32Array([width, height]);
             const gpuWidthHeightBuffer = device.createBuffer({
                 mappedAtCreation: true,
