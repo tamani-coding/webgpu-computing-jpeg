@@ -13,6 +13,14 @@ Open in Chrome canary with enabled webgpu!
 
 ## Learning Source
 
+### Blog
 https://developers.google.com/web/updates/2019/08/get-started-with-gpu-compute-on-the-web
 
-https://en.wikipedia.org/wiki/Kernel_(image_processing)
+### WEBGPU
+https://gpuweb.github.io/gpuweb/#intro
+
+### WGSL
+https://gpuweb.github.io/gpuweb/wgsl/#intro
+
+### Samples
+http://austin-eng.com/webgpu-samples/
