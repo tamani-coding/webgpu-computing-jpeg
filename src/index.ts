@@ -32,6 +32,7 @@ function imageSelected(event: Event) {
         processImage(new Uint8Array(d.data), d.width, d.height).then(result => {
             console.log('Elapsed time ' + (performance.now() - t0));
 
+            // ENCODE TO JPEG DATA
             const resultImage: RawImageData<BufferLike> = {
                 width: d.width,
                 height: d.height,
@@ -39,16 +40,17 @@ function imageSelected(event: Event) {
             }
             const encoded = encode(resultImage, 100)
 
+            // AS DATA URL
             let binary = '';
             var bytes = new Uint8Array(encoded.data);
             var len = bytes.byteLength;
             for (var i = 0; i < len; i++) {
                 binary += String.fromCharCode(bytes[i]);
             }
-
             let processed = 'data:' + files[0].type + ';base64,'
             processed += window.btoa(binary);
 
+            // ASSIGN DATA URL TO OUTPUT IMAGE ELEMENT
             (document.getElementById('outputimage') as HTMLImageElement).src = processed
         })
     }, false);
