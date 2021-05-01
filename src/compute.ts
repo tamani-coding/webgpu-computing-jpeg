@@ -19,14 +19,15 @@ export async function processImage(array: Uint8Array, width: number, height: num
     return new Promise(
         (resolve, reject) => {
             // WIDTH/HEIGHT BUFFER
-            const sizeArray = new Float32Array([width, height]);
+            Int32Array
+            const sizeArray = new Int32Array([width, height]);
             const gpuWidthHeightBuffer = device.createBuffer({
                 mappedAtCreation: true,
                 size: sizeArray.byteLength,
                 usage: GPUBufferUsage.STORAGE
             });
             const arrayWidthHeightBuffer = gpuWidthHeightBuffer.getMappedRange();
-            new Float32Array(arrayWidthHeightBuffer).set(sizeArray);
+            new Int32Array(arrayWidthHeightBuffer).set(sizeArray);
             gpuWidthHeightBuffer.unmap();
 
             // INPUT BUFFER

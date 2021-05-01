@@ -1,6 +1,6 @@
 export const shader_invert = `
 [[block]] struct Size {
-    size: vec2<f32>;
+    size: vec2<u32>;
 };
 
 [[block]] struct Image {
@@ -14,7 +14,7 @@ export const shader_invert = `
 [[stage(compute)]]
 fn main([[builtin(global_invocation_id)]] global_id : vec3<u32>) {
     let resultCell : vec2<u32> = vec2<u32>(global_id.x, global_id.y);
-    let index : u32 = resultCell.y + resultCell.x * u32(widthHeight.size.y);
+    let index : u32 = resultCell.y + resultCell.x * widthHeight.size.y;
     outputPixels.rgba[index] = 4294967295u - inputPixels.rgba[index];
 }
 `
