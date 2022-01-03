@@ -1,9 +1,9 @@
 export const shader_invert = `
-[[block]] struct Size {
+struct Size {
     size: vec2<u32>;
 };
 
-[[block]] struct Image {
+struct Image {
     rgba: array<u32>;
 };
 
@@ -19,11 +19,11 @@ fn main ([[builtin(global_invocation_id)]] global_id: vec3<u32>) {
 `
 
 const laplace_3x3 = `
-[[block]] struct Size {
+struct Size {
     size: vec2<f32>;
 };
 
-[[block]] struct Image {
+struct Image {
   rgba: array<u32>;
 };
 

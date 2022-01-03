@@ -137,11 +137,11 @@ async function processImage (array: Uint8Array, width: number, height: number) :
         // SHADER
         const shaderModule = device.createShaderModule({
             code: `
-                [[block]] struct Size {
+                struct Size {
                     size: vec2<u32>;
                 };
 
-                [[block]] struct Image {
+                struct Image {
                     rgba: array<u32>;
                 };
 
