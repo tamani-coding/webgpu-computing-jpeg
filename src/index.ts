@@ -145,12 +145,13 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                     rgba: array<u32>;
                 };
 
-                [[group(0), binding(0)]] var<storage,read> widthHeight: Size;
-                [[group(0), binding(1)]] var<storage,read> inputPixels: Image;
-                [[group(0), binding(2)]] var<storage,write> outputPixels: Image;
+                @group(0) @binding(0) var<storage,read> widthHeight: Size;
+                @group(0) @binding(1) var<storage,read> inputPixels: Image;
+                @group(0) @binding(2) var<storage,write> outputPixels: Image;
 
-                [[stage(compute), workgroup_size(1)]]
-                fn main ([[builtin(global_invocation_id)]] global_id: vec3<u32>) {
+                @stage(compute) 
+                @workgroup_size(1)
+                fn main (@builtin(global_invocation_id) global_id: vec3<u32>) {
                     let index : u32 = global_id.x + global_id.y * widthHeight.size.x;
                     outputPixels.rgba[index] = 4294967295u - inputPixels.rgba[index];
                 }
@@ -173,7 +174,7 @@ async function processImage (array: Uint8Array, width: number, height: number) :
         passEncoder.setPipeline(computePipeline);
         passEncoder.setBindGroup(0, bindGroup);
         passEncoder.dispatch(width, height);
-        passEncoder.endPass();
+        passEncoder.end();
 
         commandEncoder.copyBufferToBuffer(gpuResultBuffer, 0, gpuReadBuffer, 0, array.byteLength);
 
