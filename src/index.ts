@@ -138,18 +138,18 @@ async function processImage (array: Uint8Array, width: number, height: number) :
         const shaderModule = device.createShaderModule({
             code: `
                 struct Size {
-                    size: vec2<u32>;
+                    size: vec2<u32>
                 };
 
                 struct Image {
-                    rgba: array<u32>;
+                    rgba: array<u32>
                 };
 
                 @group(0) @binding(0) var<storage,read> widthHeight: Size;
                 @group(0) @binding(1) var<storage,read> inputPixels: Image;
-                @group(0) @binding(2) var<storage,write> outputPixels: Image;
+                @group(0) @binding(2) var<storage,read_write> outputPixels: Image;
 
-                @stage(compute) 
+                @compute
                 @workgroup_size(1)
                 fn main (@builtin(global_invocation_id) global_id: vec3<u32>) {
                     let index : u32 = global_id.x + global_id.y * widthHeight.size.x;
@@ -173,7 +173,7 @@ async function processImage (array: Uint8Array, width: number, height: number) :
         const passEncoder = commandEncoder.beginComputePass();
         passEncoder.setPipeline(computePipeline);
         passEncoder.setBindGroup(0, bindGroup);
-        passEncoder.dispatch(width, height);
+        passEncoder.dispatchWorkgroups(width, height);
         passEncoder.end();
 
         commandEncoder.copyBufferToBuffer(gpuResultBuffer, 0, gpuReadBuffer, 0, array.byteLength);
