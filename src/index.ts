@@ -97,7 +97,7 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                     binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {
-                        type: "read-only-storage"
+                        type: "storage"
                     }
                 } as GPUBindGroupLayoutEntry,
                 {
@@ -146,7 +146,7 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                 };
 
                 @group(0) @binding(0) var<storage,read> widthHeight: Size;
-                @group(0) @binding(1) var<storage,read> inputPixels: Image;
+                @group(0) @binding(1) var<storage,read_write> inputPixels: Image;
                 @group(0) @binding(2) var<storage,read_write> outputPixels: Image;
 
                 fn invert(rgba: u32) -> u32 {
@@ -159,6 +159,11 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                     let b = (rgba >> 8) & 0xFF;
                     let a = rgba & 0xFF;
                     return vec4(r, g, b, a);
+                }
+
+                fn decompose_rgb(_rgba: u32) -> vec3<u32> {
+                    let rgba = decompose_rgba(_rgba);
+                    return vec3<u32>(rgba.x, rgba.y, rgba.z);
                 }
                 
                 fn compose_rgba(r: u32, g: u32, b: u32, a: u32) -> u32 {
@@ -177,11 +182,81 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                     return compose_rgba(gray, gray, gray, gray);
                 }
 
+                fn gaussian_blur(global_id: vec3<u32>) -> u32 {
+                    let kernel = array<vec3<f32>, 3>(
+                        vec3(1f/16f, 1f/8f, 1f/16f),
+                        vec3(1f/8f, 1f/4f, 1f/8f),
+                        vec3(1f/16f, 1f/8f, 1f/16f),
+                    );
+
+                    let rgba = inputPixels.rgba[global_id.x + global_id.y * widthHeight.size.x];
+
+                    let center = rgba;
+                    
+                    var top = 0u;
+                    if global_id.y != 0 {
+                        top = inputPixels.rgba[global_id.x + (global_id.y - 1) * widthHeight.size.x];
+                    }
+
+                    var top_left = 0u;
+                    if !(global_id.x == 0 || global_id.y == 0) {
+                        top_left = inputPixels.rgba[(global_id.x - 1) + (global_id.y - 1) * widthHeight.size.x];
+                    }
+
+                    var top_right = 0u;
+                    if !(global_id.x == widthHeight.size.x - 1 || global_id.y == 0) {
+                        top_right = inputPixels.rgba[(global_id.x + 1) + (global_id.y - 1) * widthHeight.size.x];
+                    }
+
+                    var bottom = 0u;
+                    if global_id.y != widthHeight.size.y - 1 {
+                        bottom = inputPixels.rgba[global_id.x + (global_id.y + 1) * widthHeight.size.x];
+                    }
+
+                    var bottom_left = 0u;
+                    if !(global_id.x == 0 || global_id.y == widthHeight.size.y - 1) {
+                        bottom_left = inputPixels.rgba[(global_id.x - 1) + (global_id.y + 1) * widthHeight.size.x];
+                    }
+
+                    var bottom_right = 0u;
+                    if !(global_id.x == widthHeight.size.x - 1 || global_id.y == widthHeight.size.y - 1) {
+                        bottom_right = inputPixels.rgba[(global_id.x + 1) + (global_id.y + 1) * widthHeight.size.x];
+                    }
+
+                    var left = 0u;
+                    if global_id.x != 0 {
+                        left = inputPixels.rgba[(global_id.x - 1) + global_id.y * widthHeight.size.x];
+                    }
+
+                    var right = 0u;
+                    if global_id.x != widthHeight.size.x - 1 {
+                        right = inputPixels.rgba[(global_id.x + 1) + global_id.y * widthHeight.size.x];
+                    }
+                    
+                    let window = array<vec3<u32>, 3>(
+                        vec3(top_left, top, top_right),
+                        vec3(left, center, right),
+                        vec3(bottom_left, bottom, bottom_right),
+                    );
+
+                    var blurred_pixel = vec3<f32>(0.0);
+
+                    for ( var i: u32 = 0; i < 3; i++ ) {
+                        blurred_pixel += kernel[i].x * vec3<f32>(decompose_rgb(window[i].x));
+                        blurred_pixel += kernel[i].y * vec3<f32>(decompose_rgb(window[i].y));
+                        blurred_pixel += kernel[i].z * vec3<f32>(decompose_rgb(window[i].z));
+                    }
+
+                    return compose_rgba(u32(blurred_pixel.x), u32(blurred_pixel.y), u32(blurred_pixel.z), decompose_rgba(rgba).w);
+                    // return compose_rgba(decompose_rgba(rgba).x, decompose_rgba(rgba).y, decompose_rgba(rgba).z, decompose_rgba(rgba).w);
+                }
+
                 @compute
                 @workgroup_size(1)
                 fn main (@builtin(global_invocation_id) global_id: vec3<u32>) {
                     let index : u32 = global_id.x + global_id.y * widthHeight.size.x;
-                    outputPixels.rgba[index] = grayscale_luma(inputPixels.rgba[index]);
+                    // outputPixels.rgba[index] = grayscale_luma(inputPixels.rgba[index]);
+                    outputPixels.rgba[index] = gaussian_blur(global_id);
                 }
             `
         });
