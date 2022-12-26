@@ -149,11 +149,29 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                 @group(0) @binding(1) var<storage,read> inputPixels: Image;
                 @group(0) @binding(2) var<storage,read_write> outputPixels: Image;
 
+                fn invert(rgba: u32) -> u32 {
+                    return 4294967295u - rgba;
+                }
+
+                fn decompose_rgba(rgba: u32) -> vec4<u32> {
+                    let r = (rgba >> 24) & 0xFF;
+                    let g = (rgba >> 16) & 0xFF;
+                    let b = (rgba >> 8) & 0xFF;
+                    let a = rgba & 0xFF;
+                    return vec4(r, g, b, a);
+                }
+
+                fn grayscale_avg(_rgba: u32) -> u32 {
+                    let rgba = decompose_rgba(_rgba);
+                    let gray = dot(vec3<u32>(rgba.x, rgba.y, rgba.z), vec3<u32>(1)) / 3;
+                    return (gray << 24) + (gray << 16) + (gray << 8) + gray;
+                }
+
                 @compute
                 @workgroup_size(1)
                 fn main (@builtin(global_invocation_id) global_id: vec3<u32>) {
                     let index : u32 = global_id.x + global_id.y * widthHeight.size.x;
-                    outputPixels.rgba[index] = 4294967295u - inputPixels.rgba[index];
+                    outputPixels.rgba[index] = grayscale_avg(inputPixels.rgba[index]);
                 }
             `
         });
