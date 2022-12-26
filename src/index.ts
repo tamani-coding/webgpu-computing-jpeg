@@ -136,7 +136,7 @@ async function processImage (array: Uint8Array, width: number, height: number) :
 
         // SHADER
         const shaderModule = device.createShaderModule({
-            code: `
+            code: /* wgsl */`
                 struct Size {
                     size: vec2<u32>
                 };
@@ -160,18 +160,28 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                     let a = rgba & 0xFF;
                     return vec4(r, g, b, a);
                 }
+                
+                fn compose_rgba(r: u32, g: u32, b: u32, a: u32) -> u32 {
+                    return (r << 24) + (g << 16) + (b << 8) + a;
+                }
 
                 fn grayscale_avg(_rgba: u32) -> u32 {
                     let rgba = decompose_rgba(_rgba);
                     let gray = dot(vec3<u32>(rgba.x, rgba.y, rgba.z), vec3<u32>(1)) / 3;
-                    return (gray << 24) + (gray << 16) + (gray << 8) + gray;
+                    return compose_rgba(gray, gray, gray, gray);
+                }
+
+                fn grayscale_luma(_rgba: u32) -> u32 {
+                    let rgba = decompose_rgba(_rgba);
+                    let gray = (u32(f32(rgba.x) * 0.3) + u32(f32(rgba.y) * 0.59) + u32(f32(rgba.z) * 0.11));
+                    return compose_rgba(gray, gray, gray, gray);
                 }
 
                 @compute
                 @workgroup_size(1)
                 fn main (@builtin(global_invocation_id) global_id: vec3<u32>) {
                     let index : u32 = global_id.x + global_id.y * widthHeight.size.x;
-                    outputPixels.rgba[index] = grayscale_avg(inputPixels.rgba[index]);
+                    outputPixels.rgba[index] = grayscale_luma(inputPixels.rgba[index]);
                 }
             `
         });
