@@ -25,6 +25,6 @@
   "dependencies": {
     "@webgpu/types": "^0.1.23",
     "buffer": "^6.0.3",
-    "jpeg-js": "^0.4.3"
+    "jpeg-js": "^0.4.4"
   }
 }

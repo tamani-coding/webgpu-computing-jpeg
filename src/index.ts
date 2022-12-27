@@ -4,9 +4,9 @@ import * as buffer from 'buffer';
 
 document.getElementById('fileinput').onchange = imageSelected;
 
-function imageSelected (event: Event) {
+function imageSelected(event: Event) {
     const files = this.files;
-    
+
     if (!files || files.length < 1) {
         return;
     }
@@ -17,48 +17,55 @@ function imageSelected (event: Event) {
 
     const dataUrlReader = new FileReader();
     dataUrlReader.addEventListener('load', function () {
-     (document.getElementById('inputimage') as HTMLImageElement).src = dataUrlReader.result as string;   
+        (document.getElementById('inputimage') as HTMLImageElement).src = dataUrlReader.result as string;
     });
     dataUrlReader.readAsDataURL(files[0]);
 
     const arrayReader = new FileReader();
     arrayReader.addEventListener('load', function () {
-        const d = decode(arrayReader.result as ArrayBuffer);
-        processImage(new Uint8Array(d.data), d.width, d.height). then(result => {
-            // ENCODE TO JPEG DATA
-            const resultImage: RawImageData<BufferLike> = {
-                width: d.width,
-                height: d.height,
-                data: result
-            }
-            const encoded = encode(resultImage, 100)
+        console.log("loaded");
+        const d = decode(arrayReader.result as ArrayBuffer, { formatAsRGBA: true, useTArray: true });
+        const output_div = document.getElementById('outputimages');
+        console.log(d.data.slice(0, 200));
+        processImage(new Uint8Array(d.data), d.width, d.height).then(results => {
+            for (var result of results) {
+                console.log("result: " + result.slice(20000, 22000));
+                // ENCODE TO JPEG DATA
+                const resultImage: RawImageData<BufferLike> = {
+                    width: d.width,
+                    height: d.height,
+                    data: result
+                }
+                const encoded = encode(resultImage, 100)
 
-            // AS DATA URL
-            let binary = '';
-            var bytes = new Uint8Array(encoded.data);
-            var len = bytes.byteLength;
-            for (var i = 0; i < len; i++) {
-                binary += String.fromCharCode(bytes[i]);
+                // AS DATA URL
+                let binary = '';
+                var bytes = new Uint8Array(encoded.data);
+                var len = bytes.byteLength;
+                for (var i = 0; i < len; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                let processed = 'data:' + files[0].type + ';base64,'
+                processed += window.btoa(binary);
+                const img = new Image(d.width, d.height);
+                img.src = processed;
+                output_div.appendChild(img);
             }
-            let processed = 'data:' + files[0].type + ';base64,'
-            processed += window.btoa(binary);
-
-            // ASSIGN DATA URL TO OUTPUT IMAGE ELEMENT
-            (document.getElementById('outputimage') as HTMLImageElement).src = processed
         });
-    })
+    });
     arrayReader.readAsArrayBuffer(files[0]);
 }
 
-async function processImage (array: Uint8Array, width: number, height: number) : Promise<Uint8Array> {
+async function processImage(array: Uint8Array, width: number, height: number): Promise<Uint8Array[]> {
+    console.log("processImage...");
     const adapter = await navigator.gpu.requestAdapter({
         powerPreference: "high-performance",
     });
     const device = await adapter.requestDevice();
 
-    return new Promise(resolve => {
+    return new Promise(async resolve => {
         // INIT BUFFERS
-        const sizeArray= new Int32Array([width, height]);
+        const sizeArray = new Int32Array([width, height]);
         const gpuWidthHeightBuffer = device.createBuffer({
             mappedAtCreation: true,
             size: sizeArray.byteLength,
@@ -70,7 +77,7 @@ async function processImage (array: Uint8Array, width: number, height: number) :
         const gpuInputBuffer = device.createBuffer({
             mappedAtCreation: true,
             size: array.byteLength,
-            usage: GPUBufferUsage.STORAGE
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
         });
         new Uint8Array(gpuInputBuffer.getMappedRange()).set(array);
         gpuInputBuffer.unmap();
@@ -91,7 +98,7 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                 {
                     binding: 0,
                     visibility: GPUShaderStage.COMPUTE,
-                    buffer : {
+                    buffer: {
                         type: "read-only-storage"
                     }
                 } as GPUBindGroupLayoutEntry,
@@ -99,7 +106,7 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                     binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {
-                        type: "storage"
+                        type: "read-only-storage"
                     }
                 } as GPUBindGroupLayoutEntry,
                 {
@@ -148,7 +155,7 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                 };
 
                 @group(0) @binding(0) var<storage,read> widthHeight: Size;
-                @group(0) @binding(1) var<storage,read_write> inputPixels: Image;
+                @group(0) @binding(1) var<storage,read> inputPixels: Image;
                 @group(0) @binding(2) var<storage,read_write> outputPixels: Image;
 
                 fn invert(rgba: u32) -> u32 {
@@ -156,10 +163,10 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                 }
 
                 fn decompose_rgba(rgba: u32) -> vec4<u32> {
-                    let r = (rgba >> 24) & 0xFF;
-                    let g = (rgba >> 16) & 0xFF;
-                    let b = (rgba >> 8) & 0xFF;
-                    let a = rgba & 0xFF;
+                    let a = (rgba >> 24) & 0xFF;
+                    let b = (rgba >> 16) & 0xFF;
+                    let g = (rgba >> 8) & 0xFF;
+                    let r = rgba & 0xFF;
                     return vec4(r, g, b, a);
                 }
 
@@ -169,7 +176,7 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                 }
                 
                 fn compose_rgba(r: u32, g: u32, b: u32, a: u32) -> u32 {
-                    return (r << 24) + (g << 16) + (b << 8) + a;
+                    return (a << 24) + (b << 16) + (g << 8) + r;
                 }
 
                 fn grayscale_avg(_rgba: u32) -> u32 {
@@ -181,7 +188,7 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                 fn grayscale_luma(_rgba: u32) -> u32 {
                     let rgba = decompose_rgba(_rgba);
                     let gray = (u32(f32(rgba.x) * 0.3) + u32(f32(rgba.y) * 0.59) + u32(f32(rgba.z) * 0.11));
-                    return compose_rgba(gray, gray, gray, gray);
+                    return compose_rgba(gray, gray, gray, 255);
                 }
 
                 fn gaussian_blur(global_id: vec3<u32>) -> u32 {
@@ -285,7 +292,7 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                             }
                         }
                         let a = decompose_rgba(inputPixels.rgba[global_id.x + global_id.y * widthHeight.size.x]).w;
-                        return compose_rgba(u32(blurred_pixel.x), u32(blurred_pixel.y), u32(blurred_pixel.z), a);
+                        return compose_rgba(u32(blurred_pixel.x), u32(blurred_pixel.y), u32(blurred_pixel.z), 255);
                     }
                 }
 
@@ -313,20 +320,30 @@ async function processImage (array: Uint8Array, width: number, height: number) :
             }
         });
 
-        // START COMPUTE PASS
-        const commandEncoder = device.createCommandEncoder();
-        const passEncoder = commandEncoder.beginComputePass();
-        passEncoder.setPipeline(computePipeline);
-        passEncoder.setBindGroup(0, bindGroup);
-        passEncoder.dispatchWorkgroups(width, height);
-        passEncoder.end();
+        let results: Uint8Array[] = [];
+        console.log("begin processing...");
 
-        commandEncoder.copyBufferToBuffer(gpuResultBuffer, 0, gpuReadBuffer, 0, array.byteLength);
+        for (let i = 0; i < 20; i++) {
+            const commandEncoder = device.createCommandEncoder();
+            let passEncoder = commandEncoder.beginComputePass();
+            passEncoder.setPipeline(computePipeline);
+            passEncoder.setBindGroup(0, bindGroup);
+            passEncoder.dispatchWorkgroups(width, height);
+            passEncoder.end();
+            commandEncoder.copyBufferToBuffer(gpuResultBuffer, 0, gpuReadBuffer, 0, array.byteLength);
+            commandEncoder.copyBufferToBuffer(gpuResultBuffer, 0, gpuInputBuffer, 0, array.byteLength);
+            device.queue.submit([commandEncoder.finish()]);
+            console.log("finished gpu commands");
+            await gpuReadBuffer.mapAsync(GPUMapMode.READ);
+            results.push(copy_ArrayBuffer(gpuReadBuffer.getMappedRange()));
+            console.log("pushed results");
+            gpuReadBuffer.unmap();
+        }
 
-        device.queue.submit([commandEncoder.finish()]);
-
-        gpuReadBuffer.mapAsync(GPUMapMode.READ).then( () => {
-            resolve(new Uint8Array(gpuReadBuffer.getMappedRange()));
-        });
+        resolve(results);
     });
+}
+
+function copy_ArrayBuffer(src: ArrayBuffer): Uint8Array {
+    return new Uint8Array(src.slice(0));
 }
