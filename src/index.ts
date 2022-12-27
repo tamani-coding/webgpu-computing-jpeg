@@ -51,7 +51,9 @@ function imageSelected (event: Event) {
 }
 
 async function processImage (array: Uint8Array, width: number, height: number) : Promise<Uint8Array> {
-    const adapter = await navigator.gpu.requestAdapter();
+    const adapter = await navigator.gpu.requestAdapter({
+        powerPreference: "high-performance",
+    });
     const device = await adapter.requestDevice();
 
     return new Promise(resolve => {
@@ -251,12 +253,52 @@ async function processImage (array: Uint8Array, width: number, height: number) :
                     // return compose_rgba(decompose_rgba(rgba).x, decompose_rgba(rgba).y, decompose_rgba(rgba).z, decompose_rgba(rgba).w);
                 }
 
+                fn get_rgb_at_pixel(x: u32, y: u32) -> vec3<u32> {
+                    return decompose_rgb(inputPixels.rgba[x + y * widthHeight.size.x]);
+                }
+
+                fn gaussian_blur_7(global_id: vec3<u32>) -> u32 {
+                    if global_id.x <= 2 || global_id.y <= 2 || global_id.x >= widthHeight.size.x - 2 || global_id.y >= widthHeight.size.y - 2 {
+                        return inputPixels.rgba[global_id.x + global_id.y * widthHeight.size.x];
+                    } else {
+                        var kernel = array<f32, 49>(
+                            0, 0, 1, 2, 1, 0, 0,
+                            0, 3, 13, 22, 13, 3, 0,
+                            1, 13, 59, 97, 59, 12, 1,
+                            2, 22, 97, 159, 97, 22, 2,
+                            1, 13, 59, 97, 59, 12, 1,
+                            0, 3, 13, 22, 13, 3, 0,
+                            0, 0, 1, 2, 1, 0, 0,
+                        );
+
+                        for (var i: u32 = 0; i < 49; i++ ) {
+                            kernel[i] = kernel[i] / 1003f;
+                        }
+
+                        var blurred_pixel = vec3<f32>(0.0);
+
+                        for ( var row: u32 = 0; row < 7; row++ ) {
+                            for ( var col: u32 = 0; col < 7; col++ ) {
+                                let x = global_id.x + col - 2;
+                                let y = global_id.y + row - 2;
+                                blurred_pixel += kernel[row * 7 + col] * vec3<f32>(get_rgb_at_pixel(x, y));
+                            }
+                        }
+                        let a = decompose_rgba(inputPixels.rgba[global_id.x + global_id.y * widthHeight.size.x]).w;
+                        return compose_rgba(u32(blurred_pixel.x), u32(blurred_pixel.y), u32(blurred_pixel.z), a);
+                    }
+                }
+
                 @compute
-                @workgroup_size(1)
+                @workgroup_size(16, 16)
                 fn main (@builtin(global_invocation_id) global_id: vec3<u32>) {
+                    if (global_id.x >= widthHeight.size.x || global_id.y >= widthHeight.size.y) {
+                        return;
+                    }
+
                     let index : u32 = global_id.x + global_id.y * widthHeight.size.x;
                     // outputPixels.rgba[index] = grayscale_luma(inputPixels.rgba[index]);
-                    outputPixels.rgba[index] = gaussian_blur(global_id);
+                    outputPixels.rgba[index] = gaussian_blur_7(global_id);
                 }
             `
         });
