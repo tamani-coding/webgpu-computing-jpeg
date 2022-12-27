@@ -23,40 +23,35 @@ function imageSelected(event: Event) {
 
     const arrayReader = new FileReader();
     arrayReader.addEventListener('load', function () {
-        console.log("loaded");
         const d = decode(arrayReader.result as ArrayBuffer, { formatAsRGBA: true, useTArray: true });
         const output_div = document.getElementById('outputimages');
-        console.log(d.data.slice(0, 200));
-        processImage(new Uint8Array(d.data), d.width, d.height).then(results => {
-            for (var result of results) {
-                console.log("result: " + result.slice(20000, 22000));
-                // ENCODE TO JPEG DATA
-                const resultImage: RawImageData<BufferLike> = {
-                    width: d.width,
-                    height: d.height,
-                    data: result
-                }
-                const encoded = encode(resultImage, 100)
-
-                // AS DATA URL
-                let binary = '';
-                var bytes = new Uint8Array(encoded.data);
-                var len = bytes.byteLength;
-                for (var i = 0; i < len; i++) {
-                    binary += String.fromCharCode(bytes[i]);
-                }
-                let processed = 'data:' + files[0].type + ';base64,'
-                processed += window.btoa(binary);
-                const img = new Image(d.width, d.height);
-                img.src = processed;
-                output_div.appendChild(img);
+        processImage(new Uint8Array(d.data), d.width, d.height).then(result => {
+            // ENCODE TO JPEG DATA
+            const resultImage: RawImageData<BufferLike> = {
+                width: d.width,
+                height: d.height,
+                data: result
             }
+            const encoded = encode(resultImage, 100)
+
+            // AS DATA URL
+            let binary = '';
+            var bytes = new Uint8Array(encoded.data);
+            var len = bytes.byteLength;
+            for (var i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            let processed = 'data:' + files[0].type + ';base64,'
+            processed += window.btoa(binary);
+            const img = new Image(d.width, d.height);
+            img.src = processed;
+            output_div.appendChild(img);
         });
     });
     arrayReader.readAsArrayBuffer(files[0]);
 }
 
-async function processImage(array: Uint8Array, width: number, height: number): Promise<Uint8Array[]> {
+async function processImage(array: Uint8Array, width: number, height: number): Promise<Uint8Array> {
     console.log("processImage...");
     const adapter = await navigator.gpu.requestAdapter({
         powerPreference: "high-performance",
@@ -84,7 +79,7 @@ async function processImage(array: Uint8Array, width: number, height: number): P
 
         const gpuResultBuffer = device.createBuffer({
             size: array.byteLength,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
         });
 
         const gpuReadBuffer = device.createBuffer({
@@ -93,7 +88,7 @@ async function processImage(array: Uint8Array, width: number, height: number): P
         });
 
         // BINDING GROUP LAYOUT
-        const bindGroupLayout = device.createBindGroupLayout({
+        const bindGroupLayout1 = device.createBindGroupLayout({
             entries: [
                 {
                     binding: 0,
@@ -106,7 +101,7 @@ async function processImage(array: Uint8Array, width: number, height: number): P
                     binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {
-                        type: "read-only-storage"
+                        type: "storage"
                     }
                 } as GPUBindGroupLayoutEntry,
                 {
@@ -119,8 +114,8 @@ async function processImage(array: Uint8Array, width: number, height: number): P
             ]
         });
 
-        const bindGroup = device.createBindGroup({
-            layout: bindGroupLayout,
+        const bindGroup1 = device.createBindGroup({
+            layout: bindGroupLayout1,
             entries: [
                 {
                     binding: 0,
@@ -143,6 +138,56 @@ async function processImage(array: Uint8Array, width: number, height: number): P
             ]
         });
 
+        const bindGroupLayout2 = device.createBindGroupLayout({
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "read-only-storage"
+                    }
+                } as GPUBindGroupLayoutEntry,
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage"
+                    }
+                } as GPUBindGroupLayoutEntry,
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage"
+                    }
+                } as GPUBindGroupLayoutEntry
+            ]
+        });
+
+        const bindGroup2 = device.createBindGroup({
+            layout: bindGroupLayout2,
+            entries: [
+                {
+                    binding: 0,
+                    resource: {
+                        buffer: gpuWidthHeightBuffer
+                    }
+                },
+                {
+                    binding: 1,
+                    resource: {
+                        buffer: gpuResultBuffer
+                    }
+                },
+                {
+                    binding: 2,
+                    resource: {
+                        buffer: gpuInputBuffer
+                    }
+                }
+            ]
+        });
+
         // SHADER
         const shaderModule = device.createShaderModule({
             code: /* wgsl */`
@@ -155,7 +200,7 @@ async function processImage(array: Uint8Array, width: number, height: number): P
                 };
 
                 @group(0) @binding(0) var<storage,read> widthHeight: Size;
-                @group(0) @binding(1) var<storage,read> inputPixels: Image;
+                @group(0) @binding(1) var<storage,read_write> inputPixels: Image;
                 @group(0) @binding(2) var<storage,read_write> outputPixels: Image;
 
                 fn invert(rgba: u32) -> u32 {
@@ -286,8 +331,8 @@ async function processImage(array: Uint8Array, width: number, height: number): P
 
                         for ( var row: u32 = 0; row < 7; row++ ) {
                             for ( var col: u32 = 0; col < 7; col++ ) {
-                                let x = global_id.x + col - 2;
-                                let y = global_id.y + row - 2;
+                                let x = global_id.x + col - 3;
+                                let y = global_id.y + row - 3;
                                 blurred_pixel += kernel[row * 7 + col] * vec3<f32>(get_rgb_at_pixel(x, y));
                             }
                         }
@@ -310,40 +355,29 @@ async function processImage(array: Uint8Array, width: number, height: number): P
             `
         });
 
-        const computePipeline = device.createComputePipeline({
-            layout: device.createPipelineLayout({
-                bindGroupLayouts: [bindGroupLayout]
-            }),
-            compute: {
-                module: shaderModule,
-                entryPoint: "main"
-            }
-        });
-
-        let results: Uint8Array[] = [];
-        console.log("begin processing...");
-
+        const commandEncoder = device.createCommandEncoder();
         for (let i = 0; i < 20; i++) {
-            const commandEncoder = device.createCommandEncoder();
             let passEncoder = commandEncoder.beginComputePass();
+            const bindGroupIndex = i % 2;
+            const computePipeline = device.createComputePipeline({
+                layout: device.createPipelineLayout({
+                    bindGroupLayouts: bindGroupIndex == 0 ? [bindGroupLayout1, bindGroupLayout2] : [bindGroupLayout2, bindGroupLayout1]
+                }),
+                compute: {
+                    module: shaderModule,
+                    entryPoint: "main"
+                }
+            });
             passEncoder.setPipeline(computePipeline);
-            passEncoder.setBindGroup(0, bindGroup);
+            passEncoder.setBindGroup(0, bindGroupIndex == 0 ? bindGroup1 : bindGroup2);
+            passEncoder.setBindGroup(1, bindGroupIndex == 0 ? bindGroup2 : bindGroup1);
             passEncoder.dispatchWorkgroups(width, height);
             passEncoder.end();
-            commandEncoder.copyBufferToBuffer(gpuResultBuffer, 0, gpuReadBuffer, 0, array.byteLength);
-            commandEncoder.copyBufferToBuffer(gpuResultBuffer, 0, gpuInputBuffer, 0, array.byteLength);
-            device.queue.submit([commandEncoder.finish()]);
-            console.log("finished gpu commands");
-            await gpuReadBuffer.mapAsync(GPUMapMode.READ);
-            results.push(copy_ArrayBuffer(gpuReadBuffer.getMappedRange()));
-            console.log("pushed results");
-            gpuReadBuffer.unmap();
+            // commandEncoder.copyBufferToBuffer(gpuResultBuffer, 0, gpuInputBuffer, 0, array.byteLength);
         }
-
-        resolve(results);
+        commandEncoder.copyBufferToBuffer(gpuResultBuffer, 0, gpuReadBuffer, 0, array.byteLength);
+        device.queue.submit([commandEncoder.finish()]);
+        await gpuReadBuffer.mapAsync(GPUMapMode.READ);
+        resolve(new Uint8Array(gpuReadBuffer.getMappedRange()));
     });
-}
-
-function copy_ArrayBuffer(src: ArrayBuffer): Uint8Array {
-    return new Uint8Array(src.slice(0));
 }
